@@ -67,6 +67,7 @@ public class NetworkTransform_DeadReckoning : NetworkBehaviour {
         LastKnownVelocity = vel;
     }
     private void OnDrawGizmosSelected() {
+        if(!rigidbody) rigidbody = GetComponent<Rigidbody2D>();
         Debug.DrawLine(transform.position, LastKnownPosition, Color.red, .2f);
         Debug.DrawRay(transform.position, LastKnownVelocity, Color.cyan);
         Debug.DrawRay(transform.position, rigidbody.velocity, Color.blue);

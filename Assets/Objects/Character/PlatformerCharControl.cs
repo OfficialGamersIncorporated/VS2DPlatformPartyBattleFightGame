@@ -29,6 +29,7 @@ public class PlatformerCharControl : NetworkBehaviour {
     // references
     new private Rigidbody2D rigidbody; // An object that handles physics like gravity, velocity, and acceleration.
     new private Collider2D collider; // An object that handles collisions with other objects.
+    private Animator animator;
 
     public void Move(Vector2 moveVect) { // This should be used when setting MoveVector instead of setting the value directly so its magnitude gets clamped.
         MoveVector = Vector2.ClampMagnitude(moveVect, 1);
@@ -38,6 +39,7 @@ public class PlatformerCharControl : NetworkBehaviour {
 
         rigidbody = GetComponent<Rigidbody2D>();
         collider = GetComponent<Collider2D>();
+        animator = GetComponent<Animator>();
     }
     void OnCollisionStay2D(Collision2D collision) {
         // This function gets called every physics frame before FixedUpdate so long as the character is touching something (like the ground).
@@ -72,6 +74,9 @@ public class PlatformerCharControl : NetworkBehaviour {
         if (softJumpInputThisFrame && softIsGrounded) {
             _LastJumpThisFrameTick = -100; // if this is not done then softJumpInputThisFrame will stay true for the full JumpBufferWindow. It needs to stay true just until it is used.
             rigidbody.velocity += Vector2.up * JumpPower;
+
+            if(animator)
+                animator.SetTrigger("Jump");
         }
 
         // Apply movement
@@ -83,6 +88,12 @@ public class PlatformerCharControl : NetworkBehaviour {
         }
         // normally you shouldn't directly set rigidbody.velocity but it's sometimes nessesary.
         rigidbody.velocity = Vector2.MoveTowards(rigidbody.velocity, new Vector2(MoveVector.x * moveSpeed, rigidbody.velocity.y), acceleration * deltaTime);
+
+        // Animation
+        if (animator) {
+            animator.SetFloat("CurrentMoveSpeed", Mathf.Abs(MoveVector.x) * moveSpeed);
+            animator.SetBool("IsGrounded", IsGrounded);
+        }
 
         // Reset at the end of the frame. Will be set back to true by OnCollisionStay2D.
         IsGrounded = false;
