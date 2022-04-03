@@ -27,6 +27,11 @@ public class NetworkTransform_DeadReckoning : NetworkBehaviour {
     }
     void Start() {
         rigidbody = GetComponent<Rigidbody2D>();
+
+        if(isServer) {
+            LastKnownPosition = transform.position;
+            LastKnownVelocity = rigidbody.velocity;
+        }
     }
     void FixedUpdate() {
         if (isLocalPlayer) {
