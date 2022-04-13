@@ -19,16 +19,24 @@ public class PlatformerCharControl : NetworkBehaviour {
     public float AirMoveSpeed = 10;
     public float GroundAcceleration = 40;
     public float AirAcceleration = 20;
+    public float GravityMultiplier = 4;
+    [Tooltip("The gravity multiplier will be set to this once the apex of the jump has been reached or once the player releases the jump button.")]
+    public float GravityMultiplier_PostApex = 8;
     public bool MovementSnapping = true;
     public float MovementSnappingThreshold = .25f;
+    public bool FaceMoveDirection = false;
     public float AttackingDeceleration = .1f;
     public float MaxWalkableSlopeAngle = 46;
     public float JumpPower = 50;
     public float JumpBufferWindow = .2f;
-    private float _LastJumpThisFrameTick = -100;
+    public float CoyoteTimingWindow = .2f;
 
     [Header("State")]
     public bool IsGrounded = false;
+    private float _LastJumpThisFrameTick = -100; // jump buffering
+    private float _LastGroundedTick = -100; // coyote timing
+    [Tooltip("Jumping will be disabled for this many frames. _LastGroundedTick will not be set either.")]
+    private int _JumpingDisabledFrames = 0;
 
     [Header("References")]
     new private Rigidbody2D rigidbody; // A component that handles physics like gravity, velocity, and acceleration.
@@ -46,12 +54,18 @@ public class PlatformerCharControl : NetworkBehaviour {
         }
     }
     public void Look(Vector2 lookVect) { // This should be used when setting LookVector instead of setting the value directly.
-        if (IsGrounded && lookVect.magnitude > .1f && !IsAttacking())
+        if (lookVect.magnitude > .1f && !IsAttacking()) // && IsGrounded
             LookVector = lookVect.normalized;
     }
     [ClientRpc] public void Push(Vector2 pushForce) {
         rigidbody.AddForce(pushForce, ForceMode2D.Impulse);
         IsGrounded = false;
+    }
+    [ClientRpc] public void SetLocked(bool locked) {
+        rigidbody.isKinematic = locked;
+    }
+    [ClientRpc] public void Teleport(Vector3 position) {
+        transform.position = position;
     }
     bool IsAttacking() {
         if(animator)
@@ -59,14 +73,15 @@ public class PlatformerCharControl : NetworkBehaviour {
         else
             return false;
     }
-    void Start() {
-        // This funcion is called once when the scene first loads before any Update functions get called.
+    void Awake() {
+        // This funcion is called once when the object first loads before any Update functions get called.
 
         rigidbody = GetComponent<Rigidbody2D>();
         collider = GetComponent<Collider2D>();
         animator = GetComponent<Animator>();
         MainRenderer = GetComponent<SpriteRenderer>();
-        //if(!HeadRenderer) HeadRenderer = GetComponentInChildren<SpriteRenderer>(); // this doesn't work. It searches itself before searching children.
+
+        if(rigidbody.gravityScale != 1) Debug.LogWarning(rigidbody.ToString() + "'s gravityScale value has been changed. Set " + this.ToString() + ".GravityMultiplier instead.", this);
     }
     void OnCollisionStay2D(Collision2D collision) {
         // This function gets called every physics frame before FixedUpdate so long as the character is touching something (like the ground).
@@ -83,7 +98,8 @@ public class PlatformerCharControl : NetworkBehaviour {
 
         // locals
         float deltaTime = Time.fixedDeltaTime; // Change to the appropriate version of DeltaTime if changed from FixedUpdate.
-        bool softIsGrounded = IsGrounded; // TODO add coyote timing
+        if(IsGrounded && _JumpingDisabledFrames <= 0) _LastGroundedTick = Time.time;
+        bool softIsGrounded = Time.time - _LastGroundedTick < CoyoteTimingWindow; // TODO add coyote timing
         JumpInputThisFrame = false;
         if (_LastJumpInputDown != JumpInputDown) {
             _LastJumpInputDown = JumpInputDown;
@@ -93,18 +109,11 @@ public class PlatformerCharControl : NetworkBehaviour {
             _LastJumpThisFrameTick = Time.time;
         bool softJumpInputThisFrame = Time.time - _LastJumpThisFrameTick < JumpBufferWindow;
 
-
-        // slowly decelerate while attacking
-        if(IsAttacking())
-            MoveVector = Vector2.MoveTowards(MoveVector, Vector2.zero, AttackingDeceleration * deltaTime);
-
-        // LookVector
-        //if(IsGrounded && MoveVector.magnitude > .1f && !IsAttacking()) {
-        //    LookVector = MoveVector.normalized;
-        //}
-        //MainRenderer.flipX = LookVector.x < 0;
-        //HeadRenderer.flipX = LookVector.x < 0;
-        transform.localScale = new Vector3(Convert.ToInt32(LookVector.x > 0) * 2 - 1,1,1);
+        // facing direction
+        if(FaceMoveDirection && MoveVector.magnitude > .1)
+            transform.localScale = new Vector3(Convert.ToInt32(MoveVector.x > 0) * 2 - 1, 1, 1);
+        else if (!FaceMoveDirection)
+            transform.localScale = new Vector3(Convert.ToInt32(LookVector.x > 0) * 2 - 1, 1, 1);
 
         // Movement snapping
         if (IsGrounded && MovementSnapping && (rigidbody.velocity.x >= 0) != (MoveVector.x >= 0) && Mathf.Abs(MoveVector.x) > MovementSnappingThreshold) {
@@ -112,23 +121,41 @@ public class PlatformerCharControl : NetworkBehaviour {
         }
 
         // Jumping
-        if (softJumpInputThisFrame && softIsGrounded && !IsAttacking()) {
+        //print("softJumpInputThisFrame: " + softJumpInputThisFrame.ToString() + ", softIsGrounded: " + softIsGrounded.ToString() + ", IsGrounded: " + IsGrounded); // debug
+        if (softJumpInputThisFrame && softIsGrounded && _JumpingDisabledFrames <= 0 && !IsAttacking()) {
+
+            _JumpingDisabledFrames = 2;
             _LastJumpThisFrameTick = -100; // if this is not done then softJumpInputThisFrame will stay true for the full JumpBufferWindow. It needs to stay true just until it is used.
+            _LastGroundedTick = -100; // If either softIsGrounded or softJumpInputThisFrame isn't
+            IsGrounded = false;
+            JumpInputThisFrame = false;
             rigidbody.velocity += Vector2.up * JumpPower;
 
             if(animator)
                 animator.SetTrigger("Jump");
         }
 
+        // Gravity
+        if((rigidbody.velocity.y > 0 && JumpInputDown) || (IsGrounded && _JumpingDisabledFrames <= 0))
+            rigidbody.gravityScale = GravityMultiplier;
+        else
+            rigidbody.gravityScale = GravityMultiplier_PostApex;
+
         // Apply movement
         float moveSpeed = GroundMoveSpeed;
         float acceleration = GroundAcceleration;
-        if (!IsGrounded) {
+        if(IsAttacking()) {
+            moveSpeed = 0;
+            acceleration = AttackingDeceleration;
+        } else if (!IsGrounded) {
             moveSpeed = AirMoveSpeed;
             acceleration = AirAcceleration;
         }
         // normally you shouldn't directly set rigidbody.velocity but it's sometimes nessesary.
-        rigidbody.velocity = Vector2.MoveTowards(rigidbody.velocity, new Vector2(MoveVector.x * moveSpeed, rigidbody.velocity.y), acceleration * deltaTime);
+        if(rigidbody.isKinematic)
+            rigidbody.velocity = Vector2.zero;
+        else
+            rigidbody.velocity = Vector2.MoveTowards(rigidbody.velocity, new Vector2(MoveVector.x * moveSpeed, rigidbody.velocity.y), acceleration * deltaTime);
 
         // Animation
         if (animator) {
@@ -138,6 +165,7 @@ public class PlatformerCharControl : NetworkBehaviour {
 
         // Reset at the end of the frame. Will be set back to true by OnCollisionStay2D.
         IsGrounded = false;
+        if (_JumpingDisabledFrames > 0) _JumpingDisabledFrames--;
     }
 
     // network trash that is more complicated than it needs to be

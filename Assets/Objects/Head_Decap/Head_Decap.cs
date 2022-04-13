@@ -18,7 +18,8 @@ public class Head_Decap : NetworkBehaviour {
 
     // state
     //[SyncVar] bool Collectable = false;
-    public HealthManager Owner;
+    public HealthManager OriginalOwner;
+    public HealthManager PreviousOwner;
 
     void Start() {
         rigidbody = GetComponent<Rigidbody2D>();
@@ -51,9 +52,10 @@ public class Head_Decap : NetworkBehaviour {
         HealthManager collectingChar = collision.GetComponent<HealthManager>();
         if (collectingChar) {
             print(collectingChar.name + " collected a head.");
-            if(collectingChar != Owner) {
-                collectingChar.IncrementHeads(1);
-                Destroy();
+            if(collectingChar != PreviousOwner) {
+                //collectingChar.IncrementHeads(1);
+                collectingChar.AddHeads(new List<HealthManager> { OriginalOwner });
+                Destroy(); // if this was replace with an Invoke then the game wouldn't end immediately once there is only one player with a head left because the game waits for all head objects to despawn.
             } else {
                 collectionTrigger.enabled = false;
                 Invoke("Destroy", 5);
