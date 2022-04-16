@@ -42,8 +42,12 @@ public class HealthManager : NetworkBehaviour {
         for(int i = 0; i < HeadRenderers.Count; i++) {
             SpriteRenderer head = HeadRenderers[i];
             head.enabled = HeadOwners.Count - 1 >= i;
-            if (head.enabled)
-                head.color = HeadOwners[i].DisplayColor;
+            if(head.enabled) {
+                if(HeadOwners[i] != null) // can be null if the head wasn't previously owned by a player.
+                    head.color = HeadOwners[i].DisplayColor;
+                else
+                    head.color = NameplateLocalPlayerColor; // todo maybe make this a different value.
+            }
         }
     }
     void HeadsChanged(SyncList<HealthManager>.Operation op, int index, HealthManager oldItem, HealthManager newItem) {

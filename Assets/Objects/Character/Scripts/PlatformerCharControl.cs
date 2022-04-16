@@ -127,9 +127,11 @@ public class PlatformerCharControl : NetworkBehaviour {
             _JumpingDisabledFrames = 2;
             _LastJumpThisFrameTick = -100; // if this is not done then softJumpInputThisFrame will stay true for the full JumpBufferWindow. It needs to stay true just until it is used.
             _LastGroundedTick = -100; // If either softIsGrounded or softJumpInputThisFrame isn't
-            IsGrounded = false;
-            JumpInputThisFrame = false;
+            //IsGrounded = false;
+            //JumpInputThisFrame = false;
             rigidbody.velocity += Vector2.up * JumpPower;
+            if(rigidbody.velocity.y < JumpPower)
+                rigidbody.velocity = new Vector2(rigidbody.velocity.x, JumpPower);
 
             if(animator)
                 animator.SetTrigger("Jump");

@@ -2,33 +2,39 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Mirror;
-using UnityEngine.Events;
-using TMPro;
 
-public class NetworkManager_Headgame : NetworkManager {
+public class NetworkManager_Custom : NetworkManager {
 
+    // config
     public List<Color> PlayerDisplayColors = new List<Color>();
 
-    public bool _LockPlayers = false;
+    // references
+    public List<Gamemode> GamemodePrefabs = new List<Gamemode>();
+    public static NetworkManager_Custom Singleton;
 
-    public UnityEvent ServerStart = new UnityEvent();
+    // state
+    private bool _LockPlayers = false;
+    public Gamemode CurrentGamemode = null;
 
-    public gamemode GamemodePrefab;
 
-    public TextMeshProUGUI DisplayTextObj;
-
+    public override void Start() {
+        base.Start();
+        Singleton = this;
+    }
     public override void OnServerAddPlayer(NetworkConnection conn) {
         base.OnServerAddPlayer(conn);
 
         HealthManager playerCharacter = GetPlayerCharacter(conn);
         if(playerCharacter) {
-            playerCharacter.HeadOwners = new List<HealthManager> { playerCharacter };
+            //playerCharacter.HeadOwners = new List<HealthManager> { playerCharacter };
+            playerCharacter.HeadOwners = new List<HealthManager>();
             playerCharacter.SetHeads(playerCharacter.HeadOwners);
+
             PlatformerCharControl charControl = playerCharacter.GetComponent<PlatformerCharControl>();
             charControl.SetLocked(_LockPlayers);
         }
 
-        // refresh every players color when a new one joins. This isn't ideal but prevents duplicate colors.
+        // refresh every players color and name when a new one joins. This isn't ideal but prevents duplicates.
         int i = 0;
         foreach(KeyValuePair<int, NetworkConnectionToClient> otherConnection in NetworkServer.connections) {
             HealthManager character = GetPlayerCharacter(otherConnection.Value);
@@ -43,9 +49,21 @@ public class NetworkManager_Headgame : NetworkManager {
     public override void OnStartServer() {
         base.OnStartServer();
 
-        gamemode mode = Instantiate<gamemode>(GamemodePrefab);
-        NetworkServer.Spawn(mode.gameObject);
-        ServerStart.Invoke();
+        StartGamemode(SelectRandomGamemode());
+    }
+    [Server] public void ClearGamemode() {
+        if(CurrentGamemode) {
+            NetworkServer.Destroy(CurrentGamemode.gameObject);
+        }
+    }
+    [Server] public void StartGamemode(Gamemode gamemode) {
+        ClearGamemode();
+
+        CurrentGamemode = Instantiate<Gamemode>(gamemode);
+        NetworkServer.Spawn(CurrentGamemode.gameObject);
+    }
+    [Server] public Gamemode SelectRandomGamemode() {
+        return GamemodePrefabs[Random.Range(0, GamemodePrefabs.Count)];
     }
     public void SetAllPlayersLocked(bool locked) {
         _LockPlayers = locked;
@@ -59,12 +77,6 @@ public class NetworkManager_Headgame : NetworkManager {
     }
 
     public HealthManager GetPlayerCharacter(NetworkConnection conn) {
-        //foreach(NetworkIdentity ownedObj in conn.clientOwnedObjects) {
-        //    HealthManager healthMng = ownedObj.GetComponent<HealthManager>();
-        //    if(healthMng)
-        //        return healthMng;
-        //}
-        //return null;
         NetworkIdentity id = conn.identity;
         if(id == null) return null;
         return id.GetComponent<HealthManager>();

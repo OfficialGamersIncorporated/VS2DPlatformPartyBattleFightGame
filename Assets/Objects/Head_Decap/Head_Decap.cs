@@ -15,6 +15,8 @@ public class Head_Decap : NetworkBehaviour {
     // config
     public Vector2 StartVelocity = Vector2.up * 5;
     public float DelayBeforeCanBePickedUp = 1;
+    [Tooltip("If a player loses a head and then immediately tries to pick it up again will it be destroyed?")]
+    public static bool DestroyOnRecollection = true;
 
     // state
     //[SyncVar] bool Collectable = false;
@@ -52,8 +54,7 @@ public class Head_Decap : NetworkBehaviour {
         HealthManager collectingChar = collision.GetComponent<HealthManager>();
         if (collectingChar) {
             print(collectingChar.name + " collected a head.");
-            if(collectingChar != PreviousOwner) {
-                //collectingChar.IncrementHeads(1);
+            if(DestroyOnRecollection == false || collectingChar != PreviousOwner) {
                 collectingChar.AddHeads(new List<HealthManager> { OriginalOwner });
                 Destroy(); // if this was replace with an Invoke then the game wouldn't end immediately once there is only one player with a head left because the game waits for all head objects to despawn.
             } else {
